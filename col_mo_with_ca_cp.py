@@ -112,7 +112,7 @@ NSTEPS = 1  # the number of total steps of simulation
 V_MAX = 0.03  # the max moving velocity
 # the number of vertices of polygons approximating curves, only used to
 # plot the fln graph.
-RES = 100
+RES = 50
 PI = math.pi  # pi value
 ZERO = 1e-4  # tolerance for checking two points coincidence
 V_TOL = 1e-16  # tolerance for the absolute velocity
@@ -500,7 +500,7 @@ def limited_delaunay_neighbor(vc_a, position_a, position_b):
     return False
 
 
-def planned_velocity_verification(v_p, theta_p, p_i, p_j):
+def planned_velocity_verification(theta_p, p_i, p_j):
     """
     in order to avoid the influence by setting the absolute velocity to zero, 
     the absolute velocity should be resumed by judging whether the planned
@@ -517,7 +517,8 @@ def planned_velocity_verification(v_p, theta_p, p_i, p_j):
             False--the absolute velocity is set to zero
     """
     planned_velocity = np.array([math.cos(theta_p), math.cos(theta_p)])
-    normed_vector_particle_pair = (np.array(p_j)-np.array(p_i))/two_points_distance(p_i, p_j)
+    normed_vector_particle_pair = (
+        np.array(p_j) - np.array(p_i)) / two_points_distance(p_i, p_j)
     if 0 < np.dot(planned_velocity, normed_vector_particle_pair) <= 1:
         return True
     else:
@@ -840,30 +841,22 @@ for steps in xrange(NSTEPS):
     resultant_force = np.array([[0.0, 0.0]] * N)
     for i in xrange(N):  # looping for all particles
         # initial max and min distance between two particles
-        d_min = float('inf')
-        d_max = 0.0  # for planning the absolute velocity
+        robust_d = float('inf')
+        index_d = i  # for planning the absolute velocity
         k = 0  # recording the number of neighbor particles
         # looping for all the first layer neighbors of particle i
         for j in first_layer_neighbor_set[i]:
-            # d =
-            # math.sqrt((positions[i][0]-positions[j][0])**2+(positions[i][1]-positions[j][1])**2)
             # distance between i and j
-            # distance between i and j
-            tmp_d = math.sqrt(
-                (positions[i][0] - positions[j][0]) ** 2 + (positions[i][1] - positions[j][1]) ** 2)
-            if (SENSING_RANGE - tmp_d) < 1e-11 or (tmp_d - 2 * CORE_RANGE) < 1e-11:
-                d = math.ceil(tmp_d * 1e11) / 1e11
-            else:
-                d = tmp_d
+            d = two_points_distance(positions[i], positions[j])
             if d < 2 * CORE_RANGE:  # for debugging
                 print 'two particles ' + str(i) + ' and ' + str(j) + ' collide at ' + str(steps) + ' step!'
                 print 'distance:', d
             # calculating the min and max distance between particle i and its
             # neighbors
-            if d < d_min:
-                d_min = d
-            if d > d_max:
-                d_max = d
+            robust_d_current = min((d-2*CORE_RANGE)/2.0, (SENSING_RANGE-d)/2.0)
+            if robust_d_current < robust_d:
+                robust_d = robust_d_current
+                index_d = j
             k += 1
             # alignment force without particle i itself
             alig_force[
@@ -880,33 +873,15 @@ for steps in xrange(NSTEPS):
                                  -u_a * (d - att_margin) ** 2 / (SENSING_RANGE - att_margin) ** 2 * (positions[i][1] - positions[j][1]) / d]
 #                 att_force[i] += [-(d-att_margin)/(SENSING_RANGE-att_margin)*(positions[i][0]-positions[j][0])/d, \
 #                                  -(d-att_margin)/(SENSING_RANGE-att_margin)*(positions[i][1]-positions[j][1])/d]
-#            if d < equ_pos_left:
-# potential function of parabolic form
-# rep_force[i] += [((equ_pos_left)**2)/((equ_pos_left-2*CORE_RANGE)**2)*(positions[i][0]-positions[j][0])/d, \
-# ((equ_pos_left)**2)/((equ_pos_left-2*CORE_RANGE)**2)*(positions[i][1]-positions[j][1])/d]
-# potential function of linear form
-#                rep_force += [(equ_pos_left-d)/(equ_pos_left-2*CORE_RANGE)*(positions[i][0]-positions[j][0])/d,\
-#                              (equ_pos_left-d)/(equ_pos_left-2*CORE_RANGE)*(positions[i][1]-positions[j][1])/d]
-#            if d > equ_pos_right:
-# potential function of parabolic form
-# att_force[i] += [-((equ_pos_right)**2)/((SENSING_RANGE-equ_pos_right)**2)*(positions[i][0]-positions[j][0])/d, \
-# -((equ_pos_right)**2)/((SENSING_RANGE-equ_pos_right)**2)*(positions[i][1]-positions[j][1])/d]
-# potential function of linear form
-#                att_force[i] += [-(d-equ_pos_right)/(SENSING_RANGE-equ_pos_right)*(positions[i][0]-positions[j][0])/d, \
-#                                 -(d-equ_pos_right)/(SENSING_RANGE-equ_pos_right)*(positions[i][1]-positions[j][1])/d]
         # alignment force with particle i itself
         alig_force[i] += [v[i] * math.cos(theta[i]), v[i] * math.sin(theta[i])]
         resultant_force[i] = u_b * alig_force[i] + rep_force[i] + att_force[i]
         tmp_theta[i] = math.atan2(
             resultant_force[i][1], resultant_force[i][0])  # theta = atan2(y,x)
-        tmp_v[i] = min(
-            [V_MAX, (d_min - 2 * CORE_RANGE) / 2.0, (SENSING_RANGE - d_max) / 2.0])
-# if abs((d_min-2*CORE_RANGE)/2.0) < V_TOL or abs((d_max-SENSING_RANGE)/2.0) < V_TOL: # setting too small absolute velocity to zero
-#            tmp_v[i] = 0.0
-#        else:
-# tmp_v[i] = min([V_MAX, (d_min-2*CORE_RANGE)/2.0, (SENSING_RANGE-d_max)/2.0]) # truncating only the 16 number due to the accuracy of floating number
-# the calculation of velocity vector will incur the inaccuracy of floating
-# number.
+        tmp_v[i] = min(V_MAX, robust_d)
+        # verification the absolute velocity to avoid float number inaccuracy
+        if tmp_v[i] < V_TOL and planned_velocity_verification(tmp_theta[i], positions[i], positions[j]):
+            tmp_v[i] = 0
         # updating particles' positions (forward updating)
         positions_offset[i] = [
             tmp_v[i] * math.cos(tmp_theta[i]), tmp_v[i] * math.sin(tmp_theta[i])]
@@ -945,12 +920,11 @@ for steps in xrange(NSTEPS):
         v[i] * math.cos(theta[i]) for i in xrange(N)) ** 2 + sum(v[i] * math.sin(theta[i]) for i in xrange(N)) ** 2)
     # calculating order parameter
     order_para.append(1 / float(V_MAX * N) * norm_sum_moving_vectors)
-# config_list[steps] = positions # recording configurations of current step
     v_list[steps] = v  # recording absolute velocities of current step
     theta_list[steps] = theta  # recording headings of current step
 
-# -------------------- post process for saving  intermediate results -----
-# ------------------ connectivity and symmetry checking for debugging ----
+# ----------------- post process for saving  intermediate results -------------
+# --------------- connectivity and symmetry checking for debugging ------------
     # current running steps plus already running steps
     total_steps = steps + running_steps
     # checking the symmetry and connectivity of MAS at every TIME_INTERVAL step
