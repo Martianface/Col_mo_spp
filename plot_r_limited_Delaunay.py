@@ -24,7 +24,7 @@ from shapely.geometry import Polygon
 from shapely.geometry import LineString
 from descartes import PolygonPatch
 import cPickle
-import profile  # for performance analysis
+#import profile  # for performance analysis
 
 # defining constants
 PARTICLE_NUM = 100  # the number of particles
@@ -36,10 +36,10 @@ RES = 100  # the number of vertices of polygons approximating curves
 PI = math.pi
 ZERO = 1e-4
 ORIGIN = np.array([0, 0])
-u_a = 0.026
+u_a = 0.01
 
-#saving_path = './N' + str(PARTICLE_NUM) + '/ua' + str(u_a) + '/'
-saving_path = './N' + str(PARTICLE_NUM) + '/'
+saving_path = './N' + str(PARTICLE_NUM) + '/ua' + str(u_a) + '/'
+#saving_path = './N' + str(PARTICLE_NUM) + '/'
 
 # defining related functions
 
@@ -966,12 +966,12 @@ def new_first_layer_neighbor_new_func(positions):
     ax.set_rasterization_zorder(1)
     plt.axis('scaled')  # equal axis
 
-    #  labeling all the particles
-#    i = 0
-#    for x,y in positions:
-#       plt.plot(x,y, 'ok',markersize=1) # plotting particles
-#       plt.text(x+0.005 ,y+0.005 , str(i)) # plotting particles indices
-#       i += 1
+    # labeling all the particles
+    i = 0
+    for x,y in positions:
+       plt.plot(x,y, 'ok',markersize=1) # plotting particles
+       plt.text(x+0.005 ,y+0.005 , str(i)) # plotting particles indices
+       i += 1
 
     # obtaining the neighbors in the sensing range and intersecting points of
     # two sensing range circles
@@ -1241,19 +1241,18 @@ def new_first_layer_neighbor_new_func(positions):
     else:
         print 'particle system is connected!'
 
-    # plt.show()
+    plt.show()
 
 
 # reading particles' positions to plot
-filename_config_pk = 'config_' + \
-    str(PARTICLE_NUM) + '_particles.pk'  # file recording positions
+filename_config_pk = 'config_' + str(PARTICLE_NUM) + '_particles.pk'  # file recording positions
 if os.path.isfile(saving_path + filename_config_pk):
     positions = cPickle.load(open(saving_path + filename_config_pk, 'rb'))
     print 'success to load file %s.' % filename_config_pk
     # calling functions to plot graph
 #    fln = first_layer_neighbor(positions)
 # new_first_layer_neighbor(positions) # with old func
-    profile.run("new_first_layer_neighbor(positions)")
-    # new_first_layer_neighbor_new_func(positions)  # with new func
+#    profile.run("new_first_layer_neighbor(positions)")
+    new_first_layer_neighbor_new_func(positions)  # with new func
 else:
     print 'failure to load file %s.' % filename_config_pk

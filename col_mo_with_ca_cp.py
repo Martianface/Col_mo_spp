@@ -39,28 +39,28 @@ Updated on Tue Nov 04 10:38:08 2014
 2. At given steps, the graphs of first layer neighbor are plotted by the old function first_layer_neighbor().
 3. The dictionary data type in function are replaced by the list data type to increase the running speed.
 4. Particles collisions and disconnection originate from the inaccuracy of float number in the following:
-   1) The inaccuracy of floating number in calculating x, y components of the absolute velocity will lead to 
+   1) The inaccuracy of floating number in calculating x, y components of the absolute velocity will lead to
       particles collision and disconnection. So The threshold of setting absolute velocity to zero is set
       to 1e-12 and when the norm of position offset is larger than planned absolute velocity, the correction
       process of the decomposition of velocity vectors is invoked.
    2) The tolerance for the equality of two float numbers leads to the misjudgement of first layer neighbors.
       The selection of tolerance will be considered to be adaptive for the different configurations.
-      
+
 Updated on Fri Nov 07 15:26:31
-1. In the function limited_delaunay_neighbor(), we add the process of judging the distances between two 
+1. In the function limited_delaunay_neighbor(), we add the process of judging the distances between two
    consecutive vertices and two centers, respectively in order to exclude edges which are the approximation
-   of arcs of voronoi cells. 
+   of arcs of voronoi cells.
 
 Updated on Tue Nov 11 16:01:02
 1. saving intermediate sensing range figures by replacing the approximating straight edges of voronoi cells
-   by arcs.  
+   by arcs.
 2. new function new_limited_delaunay_neighbor() to obtain first layer neighbors according to the position_a,
    positions_b and voronoi_cell[a] is used.
-   
+
 Updated on Mon Dec 1 08:36:05
 1. modifying the truncating strategy of position updating to avoid the inaccuracy of floating number. Setting
    a threshold to restrict the updating of positions when the norm of positions offset is less than 1e-11.
-   
+
 Updated on Sat Dec 13 17:14:02
 1. modifying the strategy to avoid the inaccuracy of floating numbers by adding the distance between two
    particles a small increment when it is less than a threshold 1e-10.
@@ -76,7 +76,7 @@ Updated on Thur Apr 2 01:03:55
 
 Updated on Mon Apr 6 23:26:55
 1. treating the problem with the tolerance of the minimum velocity :
-    if the velocity is less than the V_TOL and the moving direction will 
+    if the velocity is less than the V_TOL and the moving direction will
     degrade of the distance between two limited particles, then the velocity
     is set to ZERO,
     otherwise, the velocity is preserved to gradually improve the limited
@@ -108,18 +108,18 @@ random.seed(rs)  # with the same seed, we can obtain the same random numbers
 N = 100  # the number of particles
 SENSING_RANGE = math.sqrt(1)  # the sensing range of particle
 CORE_RANGE = 0.01  # the radius of hard core of particle
-NSTEPS = 1  # the number of total steps of simulation
+NSTEPS = 100000  # the number of total steps of simulation
 V_MAX = 0.03  # the max moving velocity
 # the number of vertices of polygons approximating curves, only used to
 # plot the fln graph.
 RES = 50
 PI = math.pi  # pi value
 ZERO = 1e-4  # tolerance for checking two points coincidence
-V_TOL = 1e-16  # tolerance for the absolute velocity
+V_TOL = 1e-11  # tolerance for the absolute velocity
 PS_TOL = 1e-14  # tolerance for the positions offset
 ORIGIN = np.array([0, 0])  # original point in 2D
 # time interval for checking the symmetry and connectivity
-TEST_INTERVAL = 5000
+TEST_INTERVAL = 1
 SAVE_INTERVAL = 20000  # time interval for saving the intermediate results
 
 # defining the ini variables
@@ -129,7 +129,7 @@ positions = np.array([[0.0, 0.0]] * N)  # positions of particles
 u_m = 1.0  # user defined magnitude coefficient for regions of potential forces
 rep_margin = 2 * CORE_RANGE + u_m * 2 * V_MAX
 att_margin = SENSING_RANGE - u_m * 2 * V_MAX
-u_a = 0.026  # magnitude of potential forces
+u_a = 0.01  # magnitude of potential forces
 u_b = 1e0  # magnitude of alignment forces
 upsilon = 1e-3  # tolerance for radius of particle's polar coordinate
 
@@ -205,8 +205,7 @@ def two_points_slope(p1, p2):
 
 def bisector(p1, p2, r=SENSING_RANGE):
     """
-    :param: p1,p2: the coordination of two particles, p1 is the center point,
-                   p2 is the neighboring point.
+    :param: p1,p2: the coordination of two particles, p1 is the center point,p2 is the neighboring point.
             r: the half sensing range of particles (the default value is r/2)
     :rtype: ip_sa, ip_ea: starting and ending angle of two intersection points between the bisector and circle.
             ip_sp, ip_ep: starting and ending point of two intersection points between the bisector and circle.
@@ -308,8 +307,8 @@ def constrained_sensing_xrange(positions, r, res):
 
 def find_major_arc(positions, r):
     """
-    according to center of circle, and intersection points of two circles, find the starting and ending point of a 
-    major arc corresponding to two intersection points. 
+    according to center of circle, and intersection points of two circles, find the starting and ending point of a
+    major arc corresponding to two intersection points.
     :param: positions(3*2 matrix): the first row is the coordinates of particle(center coordinates of circle), and
             the remaining two rows are the coordinates of two intersection points of two sensing range circles
             between particles and its nearest neighbors
@@ -360,7 +359,7 @@ def find_major_arc(positions, r):
 def fill_circular_sector(starting_angle, ending_angle, center, r, ax, fcolor):
     """
     fill a circular sector with random color
-    :param: starting_angle, ending_angle -- scalar represented by radian, 
+    :param: starting_angle, ending_angle -- scalar represented by radian,
             angles are denoted by the local coordinate, whose origin is center
             center -- the center coordinates of the circle corresponded to the circular sector, 2d vector
             r -- radius of the circular sector
@@ -502,7 +501,7 @@ def limited_delaunay_neighbor(vc_a, position_a, position_b):
 
 def planned_velocity_verification(theta_p, p_i, p_j):
     """
-    in order to avoid the influence by setting the absolute velocity to zero, 
+    in order to avoid the influence by setting the absolute velocity to zero,
     the absolute velocity should be resumed by judging whether the planned
     velocity will increase or decrease the distance of the particle pair
     related to the minimum absolute velocity. If the planned velocity will not
@@ -513,13 +512,18 @@ def planned_velocity_verification(theta_p, p_i, p_j):
             theta_i--the moving direction of the planned velocity
             p_i, p_j: the particle pair generating the absolute velicty
     :rtype: boolean variable
-            True--the planned absolute velocity is adopted to particles
-            False--the absolute velocity is set to zero
+            True--the planned absolute velocity will lead to the decrease of
+                the distance of the related particle pair, and will be set
+                to zero.
+            False--the absolute velocity is preserved as the planned absolute
+                velocity.
     """
-    planned_velocity = np.array([math.cos(theta_p), math.cos(theta_p)])
+    planned_velocity = np.array([math.cos(theta_p), math.sin(theta_p)])
     normed_vector_particle_pair = (
         np.array(p_j) - np.array(p_i)) / two_points_distance(p_i, p_j)
-    if 0 < np.dot(planned_velocity, normed_vector_particle_pair) <= 1:
+    if two_points_distance(p_i, p_j) < rep_margin and 0 < np.dot(planned_velocity, normed_vector_particle_pair) <= 1:
+        return True
+    elif two_points_distance(p_i, p_j) > att_margin and -1 <= np.dot(planned_velocity, normed_vector_particle_pair) < 0:
         return True
     else:
         return False
@@ -530,7 +534,7 @@ def first_layer_neighbor_without_graph(positions):
     According to the current positions, the first layer neighbor set of particles
     is obtained.
     :param: positions: N*2 array representing N particles' 2d coordinates
-    :rtype: first_layer_neighbor_set: list with size N, each row records the particle i's 
+    :rtype: first_layer_neighbor_set: list with size N, each row records the particle i's
             first layer neighbor set.
     """
     # variable for recording intermediate data
@@ -853,7 +857,8 @@ for steps in xrange(NSTEPS):
                 print 'distance:', d
             # calculating the min and max distance between particle i and its
             # neighbors
-            robust_d_current = min((d-2*CORE_RANGE)/2.0, (SENSING_RANGE-d)/2.0)
+            robust_d_current = min(
+                (d - 2 * CORE_RANGE) / 2.0, (SENSING_RANGE - d) / 2.0)
             if robust_d_current < robust_d:
                 robust_d = robust_d_current
                 index_d = j
@@ -880,8 +885,8 @@ for steps in xrange(NSTEPS):
             resultant_force[i][1], resultant_force[i][0])  # theta = atan2(y,x)
         tmp_v[i] = min(V_MAX, robust_d)
         # verification the absolute velocity to avoid float number inaccuracy
-        if tmp_v[i] < V_TOL and planned_velocity_verification(tmp_theta[i], positions[i], positions[j]):
-            tmp_v[i] = 0
+        if tmp_v[i] < V_TOL and planned_velocity_verification(tmp_theta[i], positions[i], positions[index_d]):
+            tmp_v[i] = 0.0
         # updating particles' positions (forward updating)
         positions_offset[i] = [
             tmp_v[i] * math.cos(tmp_theta[i]), tmp_v[i] * math.sin(tmp_theta[i])]
@@ -916,8 +921,8 @@ for steps in xrange(NSTEPS):
         # Here, the updating of positions will lead to disconnectivity because
         # of the inaccuracy of float numbers.
         positions[i] += positions_offset[i]
-    norm_sum_moving_vectors = math.sqrt(sum(
-        v[i] * math.cos(theta[i]) for i in xrange(N)) ** 2 + sum(v[i] * math.sin(theta[i]) for i in xrange(N)) ** 2)
+    norm_sum_moving_vectors = math.sqrt(sum(v[i] * math.cos(theta[i]) for i in xrange(
+        N)) ** 2 + sum(v[i] * math.sin(theta[i]) for i in xrange(N)) ** 2)
     # calculating order parameter
     order_para.append(1 / float(V_MAX * N) * norm_sum_moving_vectors)
     v_list[steps] = v  # recording absolute velocities of current step
@@ -1468,4 +1473,4 @@ f_rs.close()
 # print the ending time
 end_time = time.time() - start_time
 print 'Ending: ' + time.strftime("%Y/%m/%d %H:%M:%S", time.localtime())
-print 'Time Elapsing: ' + str(end_time / 60.0) + ' sec'
+print 'Time Elapsing: ' + str(end_time / 60.0) + ' min'
