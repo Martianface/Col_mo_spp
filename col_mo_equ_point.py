@@ -90,7 +90,7 @@ Modified on Wed Jan 14 2015 16:36:15
 1. using the new defined function bisector() to replace function
 circle_intersection().
 2. the parameter related to the phase transition is the magnitude of potential
- forces.
+forces, and is produced in front of each item of potential forces.
 
 Updated on Thur Apr 2 01:03:55
 1. optimizing the performance of the code according to suggestions from:
@@ -98,11 +98,17 @@ Updated on Thur Apr 2 01:03:55
 
 Updated on Mon Apr 6 23:26:55
 1. treating the problem with the tolerance of the minimum velocity :
-    if the velocity is less than the V_TOL and the moving direction will
-    degrade of the distance between two limited particles, then the velocity
-    is set to ZERO,
-    otherwise, the velocity is preserved to gradually improve the limited
-    particles.
+if the velocity is less than the V_TOL and the moving direction will
+degrade of the distance between two limited particles, then the velocity
+is set to ZERO, otherwise, the velocity is preserved to gradually improve the limited
+particles.
+
+Updated on Tue Apr 21 07:54:55
+1. modifying the potential force to the one like <Phase transition in the 
+collective migration of tissue cells: Experiment and model> with an equilibrium
+position and with linear magnitude.
+2. considering the parameter u_b as a varying coefficient to observe the result
+of simulations.
 
 """
 
@@ -141,8 +147,8 @@ V_TOL = 1e-11  # tolerance for the absolute velocity
 PS_TOL = 1e-14  # tolerance for the positions offset
 ORIGIN = np.array([0, 0])  # original point in 2D
 # time interval for checking the symmetry and connectivity
-TEST_INTERVAL = 5000
-SAVE_INTERVAL = 20000  # time interval for saving the intermediate results
+TEST_INTERVAL = 2500
+SAVE_INTERVAL = 5000  # time interval for saving the intermediate results
 
 # defining the ini variables
 neighbor_num = [0] * N  # the number of neighbor of a particle
@@ -151,8 +157,9 @@ positions = np.array([[0.0, 0.0]] * N)  # positions of particles
 u_m = 1.0  # magnitude of the region of potential forces
 rep_margin = 2 * CORE_RANGE + u_m * 2 * V_MAX
 att_margin = SENSING_RANGE - u_m * 2 * V_MAX
-u_a = 0.02  # magnitude of potential forces
-u_b = 1e0  # magnitude of alignment forces
+equ_point = (SENSING_RANGE - 2*CORE_RANGE)/2.0
+u_a = 0.001  # magnitude of potential forces
+u_b = 0.0  # magnitude of alignment forces
 upsilon = 1e-3  # tolerance for radius of particle's polar coordinate
 
 
@@ -161,7 +168,7 @@ upsilon = 1e-3  # tolerance for radius of particle's polar coordinate
 def is_equal(a, b):
     """
     judging the equality of floating numbers
-    :param: a b: two floating number
+    :param a b: two floating number
     :rtype: boolean True or False
     """
     return abs(a - b) < ZERO
@@ -190,7 +197,7 @@ def point_on_segment(p1, p2, p3):
     if is_equal(two_points_distance(p1, p2), 0) or is_equal(two_points_distance(p1, p3), 0):
         return True
     # p1 is in the region consisting of p2 and p3
-    elif (min(p2[0], p3[0]) < p1[0] and p1[0] < max(p2[0], p3[0])) and (min(p2[1], p3[1]) < p1[1] and p1[1] < max(p2[1], p3[1])):
+    elif (min(p2[0], p3[0]) < p1[0] < max(p2[0], p3[0])) and (min(p2[1], p3[1]) < p1[1] < max(p2[1], p3[1])):
         # area of the triangle consisting of three points
         s = 0.5 * \
             ((p1[0] - p3[0]) * (p2[1] - p3[1]) -
@@ -638,8 +645,8 @@ def first_layer_neighbor_without_graph(positions):
     # between starting and ending point of circular segment.
     for i in xrange(N):
         poly_points = []
-    # fcolor = np.random.rand(3,1) # setting the color for filling the vn
-    # region of particle
+        # fcolor = np.random.rand(3,1) # setting the color for filling the vn
+        # region of particle
         starting_angle = math.atan2(starting_ending_point[i][0][
                                     1] - positions[i][1], starting_ending_point[i][0][0] - positions[i][0])
         ending_angle = math.atan2(starting_ending_point[i][1][
@@ -753,7 +760,7 @@ def first_layer_neighbor_without_graph(positions):
 #    into files
 # ----------------------------------------------------------------------------
 # the directory for saving current simulation results
-saving_path = './N' + str(N) + '/ua' + str(u_a) + '/'
+saving_path = './N' + str(N) + '/ua' + str(u_a) + '_ub' + str(u_b) + '/'
 if not os.path.exists(saving_path):
     os.makedirs(saving_path)
     print 'directory ' + saving_path + ' is created.'
@@ -842,7 +849,6 @@ filename_v_list = 'v_list_' + str(N) + '_particles.txt'
 filename_theta_list = 'theta_list_' + str(N) + '_particles.txt'
 # file recording the number of first layer neighbors
 filename_fln_list = 'fln_list_' + str(N) + '_particles.txt'
-
 
 # ------- saving initial state of variables and random seed into files --------
 # saving positions data into intermediate file
@@ -949,18 +955,20 @@ for steps in xrange(NSTEPS):
             # alignment force without particle i itself
             alig_force[
                 i] += [v[j] * math.cos(theta[j]), v[j] * math.sin(theta[j])]
-            if d < rep_margin:
+            if d < equ_point:
                 # normalized repulsive force
-                rep_force[i] += [u_a * (d - rep_margin) ** 2 / (rep_margin - 2 * CORE_RANGE) ** 2 * (positions[i][0] - positions[j][0]) / d,
-                                 u_a * (d - rep_margin) ** 2 / (rep_margin - 2 * CORE_RANGE) ** 2 * (positions[i][1] - positions[j][1]) / d]
-                # rep_force += [(rep_margin-d)/(rep_margin-2*CORE_RANGE)*(positions[i][0]-positions[j][0])/d,\
-                              # (rep_margin-d)/(rep_margin-2*CORE_RANGE)*(positions[i][1]-positions[j][1])/d]
-            if d > att_margin:
+                # rep_force[i] += [u_a * (d - rep_margin) ** 2 / (rep_margin - 2 * CORE_RANGE) ** 2 * (positions[i][0] - positions[j][0]) / d,
+                #                  u_a * (d - rep_margin) ** 2 / (rep_margin - 2 * CORE_RANGE) ** 2 * (positions[i][1] - positions[j][1]) / d]
+                # linear force with equilibrium point
+                rep_force += [u_a*(equ_point-d)/(equ_point-2*CORE_RANGE)*(positions[i][0]-positions[j][0])/d,
+                              u_a*(equ_point-d)/(equ_point-2*CORE_RANGE)*(positions[i][1]-positions[j][1])/d]
+            if d > equ_point:
                 # normalized attractive force
-                att_force[i] += [-u_a * (d - att_margin) ** 2 / (SENSING_RANGE - att_margin) ** 2 * (positions[i][0] - positions[j][0]) / d,
-                                 -u_a * (d - att_margin) ** 2 / (SENSING_RANGE - att_margin) ** 2 * (positions[i][1] - positions[j][1]) / d]
-                # att_force[i] += [-(d-att_margin)/(SENSING_RANGE-att_margin)*(positions[i][0]-positions[j][0])/d, \
-                                 # -(d-att_margin)/(SENSING_RANGE-att_margin)*(positions[i][1]-positions[j][1])/d]
+                # att_force[i] += [-u_a * (d - att_margin) ** 2 / (SENSING_RANGE - att_margin) ** 2 * (positions[i][0] - positions[j][0]) / d,
+                #                  -u_a * (d - att_margin) ** 2 / (SENSING_RANGE - att_margin) ** 2 * (positions[i][1] - positions[j][1]) / d]
+                # linear force with equilibrium point
+                att_force[i] += [-u_a*(d-equ_point)/(SENSING_RANGE-equ_point)*(positions[i][0]-positions[j][0])/d,
+                                 -u_a*(d-equ_point)/(SENSING_RANGE-equ_point)*(positions[i][1]-positions[j][1])/d]
         # alignment force with particle i itself
         alig_force[i] += [v[i] * math.cos(theta[i]), v[i] * math.sin(theta[i])]
         resultant_force[i] = u_b * alig_force[i] + rep_force[i] + att_force[i]
@@ -1033,18 +1041,18 @@ for steps in xrange(NSTEPS):
     # 3. histogram of order parameter
     # 4. first layer neighbors graph
 
-    # defining file names for intermediate results with Pickle
-    filename_config_si_pk = 'config of ' + \
-        str(N) + ' particles at ' + str(total_steps) + ' steps.pk'
-    filename_theta_si_pk = 'theta of ' + \
-        str(N) + ' particles at ' + str(total_steps) + ' steps.pk'
-    filename_v_si_pk = 'v of ' + \
-        str(N) + ' particles at ' + str(total_steps) + ' steps.pk'
-    filename_ord_para_si_pk = 'order param of ' + \
-        str(N) + ' particles at ' + str(total_steps) + ' steps.pk'
 
-    # saving files at each SAVE_INTERVAL
     if (total_steps + 1) % SAVE_INTERVAL == 0:
+        # defining file names for intermediate results with Pickle
+        filename_config_si_pk = 'config of ' + \
+            str(N) + ' particles at ' + str(total_steps) + ' steps.pk'
+        filename_theta_si_pk = 'theta of ' + \
+            str(N) + ' particles at ' + str(total_steps) + ' steps.pk'
+        filename_v_si_pk = 'v of ' + \
+            str(N) + ' particles at ' + str(total_steps) + ' steps.pk'
+        filename_ord_para_si_pk = 'order param of ' + \
+            str(N) + ' particles at ' + str(total_steps) + ' steps.pk'        
+        
         # saving intermediate results with Pickle
         cPickle.dump(
             positions, open(saving_path + filename_config_si_pk, 'wb'))
