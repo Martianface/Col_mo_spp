@@ -109,7 +109,8 @@ collective migration of tissue cells: Experiment and model> with an equilibrium
 position and with linear magnitude.
 2. considering the parameter u_b as a varying coefficient to observe the result
 of simulations.
-
+3. the coefficient of the alignment is changed so that with this coefficient is 
+zero, the moving direction of particles remains where it is.
 """
 
 import math
@@ -954,7 +955,7 @@ for steps in xrange(NSTEPS):
             k += 1
             # alignment force without particle i itself
             alig_force[
-                i] += [v[j] * math.cos(theta[j]), v[j] * math.sin(theta[j])]
+                i] += [u_b * v[j] * math.cos(theta[j]), u_b * v[j] * math.sin(theta[j])]
             if d < equ_point:
                 # normalized repulsive force
                 # rep_force[i] += [u_a * (d - rep_margin) ** 2 / (rep_margin - 2 * CORE_RANGE) ** 2 * (positions[i][0] - positions[j][0]) / d,
@@ -971,7 +972,7 @@ for steps in xrange(NSTEPS):
                                  -u_a*(d-equ_point)/(SENSING_RANGE-equ_point)*(positions[i][1]-positions[j][1])/d]
         # alignment force with particle i itself
         alig_force[i] += [v[i] * math.cos(theta[i]), v[i] * math.sin(theta[i])]
-        resultant_force[i] = u_b * alig_force[i] + rep_force[i] + att_force[i]
+        resultant_force[i] = alig_force[i] + rep_force[i] + att_force[i]
         tmp_theta[i] = math.atan2(
             resultant_force[i][1], resultant_force[i][0])  # theta = atan2(y,x)
         tmp_v[i] = min(V_MAX, robust_d)
