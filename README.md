@@ -8,4 +8,4 @@ The potential function is active in the decelerating range, and is normalized as
 The potential function is active in whole sensing range, and is normalized as a parabolic function with an equilibrium point.
 
   - The equilibrium point is (SENSING_RANGE-2*COLLISION_SHELL)/2, and leads the particle group to a quasi-lattice formation
-  - 
+  - The coefficient of alignment and potential force span the phase diagram 
