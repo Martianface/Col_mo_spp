@@ -104,13 +104,15 @@ is set to ZERO, otherwise, the velocity is preserved to gradually improve the li
 particles.
 
 Updated on Tue Apr 21 07:54:55
-1. modifying the potential force to the one like <Phase transition in the 
+1. modifying the potential force to the one like <Phase transition in the
 collective migration of tissue cells: Experiment and model> with an equilibrium
 position and with linear magnitude.
 2. considering the parameter u_b as a varying coefficient to observe the result
 of simulations.
-3. the coefficient of the alignment is changed so that with this coefficient is 
-zero, the moving direction of particles remains where it is.
+3. two ways of adding the parameters ua and ub are equal.
+let f_ij is a normalized force without magnitude parameter, then
+a*sum(theta_j) + b*sum(f_ij) == sum(a*theta_j) + b*sum(b*f_ij)
+
 """
 
 import math
@@ -121,23 +123,24 @@ import shutil  # file copy
 import cPickle  # file saving as python object
 
 import numpy as np
+import pandas as pd  # for optimizing the intersection of polygon
 from shapely.geometry import Polygon
 from shapely.geometry import LineString
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyArrowPatch
 from descartes import PolygonPatch
-
+from scipy.spatial.distance import squareform, pdist
 
 # print the starting time
 start_time = time.time()
 print 'Starting: ' + time.strftime("%Y/%m/%d %H:%M:%S", time.localtime())
-rs = 235013  # same random seed for all the parameter ua
+rs = 0  # same random seed for all the parameter ua
 random.seed(rs)  # with the same seed, we can obtain the same random numbers
 # defining parameters and constants
 N = 100  # the number of particles
 SENSING_RANGE = math.sqrt(1)  # the sensing range of particle
 CORE_RANGE = 0.01  # the radius of hard core of particle
-NSTEPS = 100000  # the number of total steps of simulation
+NSTEPS = 10  # the number of total steps of simulation
 V_MAX = 0.03  # the max moving velocity
 # the number of vertices of polygons approximating curves, only used to
 # plot the fln graph.
@@ -148,19 +151,18 @@ V_TOL = 1e-11  # tolerance for the absolute velocity
 PS_TOL = 1e-14  # tolerance for the positions offset
 ORIGIN = np.array([0, 0])  # original point in 2D
 # time interval for checking the symmetry and connectivity
-TEST_INTERVAL = 2500
-SAVE_INTERVAL = 5000  # time interval for saving the intermediate results
+TEST_INTERVAL = 1
+SAVE_INTERVAL = 5  # time interval for saving the intermediate results
 
 # defining the ini variables
-neighbor_num = [0] * N  # the number of neighbor of a particle
 neighbor_set = [0] * N  # the list recording the indices of neighbor particle
 positions = np.array([[0.0, 0.0]] * N)  # positions of particles
-u_m = 1.0  # magnitude of the region of potential forces
+u_m = 1.0  # magnitude of the region of potential force
 rep_margin = 2 * CORE_RANGE + u_m * 2 * V_MAX
 att_margin = SENSING_RANGE - u_m * 2 * V_MAX
-equ_point = (SENSING_RANGE - 2*CORE_RANGE)/2.0
-u_a = 1.0  # magnitude of potential forces
-u_b = 0.4  # magnitude of alignment forces
+equ_point = (SENSING_RANGE - 2 * CORE_RANGE) / 2.0
+u_a = 0.8  # magnitude of potential forces
+u_b = 0.8  # magnitude of alignment forces
 upsilon = 1e-3  # tolerance for radius of particle's polar coordinate
 
 
@@ -490,6 +492,18 @@ def fill_triangle(positions, ax, fcolor):
     ax.add_patch(patch)
 
 
+def intersection(a_polygon, b_polygon):
+    """
+    func for obtaining the intersection of two polygons from the object of the
+    package 'Shapely', which is not directly invoked but used to construct for
+    a vectorized version for optimizing the performance according to package
+    'pandas'.
+    :param: two shapely objects as polygons
+    :rtype: the polygon object as the intersectuin of these polygons
+    """
+    return a_polygon.intersection(b_polygon)
+
+
 def limited_delaunay_neighbor(vc_a, position_a, position_b):
     """
     2014.11.17 modified func of limited_delaunay_neighbor() to avoid
@@ -574,7 +588,115 @@ def planned_velocity_verification(theta_p, p_i, p_j):
         return False
 
 
-def first_layer_neighbor_without_graph(positions):
+def first_layer_neighbor_without_graph_new(positions):
+    """
+    According to the current positions, the first layer neighbor set of
+    particles is obtained.
+    :param: positions: N*2 array representing N particles' 2D coordinates
+    :rtype: first_layer_neighbor_set: list with size N, each row records the
+            particle i's first layer neighbor set.
+    """
+    # variable for recording intermediate data
+    first_layer_neighbor_set = [0] * N
+    # recording the info of Delaunay cell with designed data structure
+    Voronoi_cell = [0] * N
+    # recording the starting and ending point for each circular sector
+    starting_ending_point = [0] * N
+    # recording the starting and ending angle for each circular sector
+    starting_ending_angle = [0] * N
+
+    # new methond to obtain the neighbors in the sensing range and intersecting
+    # points of two sensing range circles
+    D = squareform(pdist(positions))
+    # obtaining row and column indices of elements satisifying the condition
+    ind1, ind2 = np.where(D <= SENSING_RANGE)
+    unique = (ind1 < ind2)
+    ind1 = ind1[unique]
+    ind2 = ind2[unique]
+
+    adjacent_matrix = np.zeros((N, N), dtype=int)
+    for i1, i2 in zip(ind1, ind2):
+        adjacent_matrix[i1][i2] = 1
+        adjacent_matrix[i2][i1] = 1
+
+    for i in xrange(N):
+        starting_ending_point_list = []
+        starting_ending_angle_list = []
+        neighbor_set[i] = np.where(adjacent_matrix[i, :] == 1)  # m*1 array
+        for j in neighbor_set[i][0]:
+            starting_point, ending_point, starting_angle, ending_angle = bisector(
+                positions[i], positions[j], r=SENSING_RANGE)
+            starting_ending_point_list.append(starting_point)
+            starting_ending_point_list.append(ending_point)
+            starting_ending_angle_list.append(starting_angle * 180 / math.pi)
+            starting_ending_angle_list.append(ending_angle * 180 / math.pi)
+        starting_ending_point[i] = starting_ending_point_list
+        starting_ending_angle[i] = starting_ending_angle_list
+
+    # according to the set circle_intersection_point[i], ordering the
+    # intersection points located from the starting to the ending point of
+    # circular segments of particle i, then, constructing an approximated
+    # Voronoi cell by interpolating the circle with intersection points
+    # between starting and ending point of circular segment.
+    poly_set = [0] * N
+    intersection_vectorized = np.vectorize(intersection)  # vectorizing func
+    for i in xrange(N):
+        poly_points_list = []
+        for j in xrange(len(neighbor_set[i][0])):
+            starting_angle = math.atan2(starting_ending_point[i][
+                                        2 * j][1] - positions[i][1], starting_ending_point[i][2 * j][0] - positions[i][0])
+            ending_angle = math.atan2(starting_ending_point[i][
+                                      2 * j + 1][1] - positions[i][1], starting_ending_point[i][2 * j + 1][0] - positions[i][0])
+            if starting_angle < 0:
+                starting_angle += 2 * math.pi
+            if ending_angle < 0:
+                ending_angle += 2 * math.pi
+            intersection_point_within_arc = []
+            for x, y in starting_ending_point[i]:
+                current_angle = math.atan2(
+                    y - positions[i][1], x - positions[i][0])
+                if current_angle < 0:
+                    current_angle += 2 * math.pi
+                if starting_angle < ending_angle:
+                    if current_angle >= starting_angle and current_angle <= ending_angle:
+                        intersection_point_within_arc.append([x, y])
+                else:
+                    if current_angle >= starting_angle or current_angle <= ending_angle:
+                        intersection_point_within_arc.append([x, y])
+            intersection_point_within_arc.sort(
+                key=lambda c: math.atan2(c[1] - positions[i][1], c[0] - positions[i][0]))
+            poly_points_list.append(intersection_point_within_arc)
+        poly_set[i] = poly_points_list
+       # finally obtained polygons representing the Voronoi cell for particles
+       # i
+    for i in xrange(N):
+        geo_polygons = pd.DataFrame({'single_column': poly_set[i]}).single_column.apply(
+            lambda x: Polygon(x)).values
+        no_polygons = len(geo_polygons)
+        tmp_poly = intersection_vectorized(geo_polygons[0], geo_polygons[1])
+        for j in range(1, no_polygons - 1):
+            tmp_poly = intersection_vectorized(tmp_poly, geo_polygons[(j + 1)])
+        Voronoi_cell[i] = tmp_poly
+
+    # calculating the first layer neighbor particles
+    for i in xrange(N):
+        first_layer_neighbor_list = []
+        for j in neighbor_set[i][0]:
+            # the only one particle in its sensing range is the Voronoi-like
+            # neighbor
+            if len(neighbor_set[i][0]) == 1 or two_points_distance(positions[i], positions[j]) == 1:
+                # and two circles have only one intersection point
+                first_layer_neighbor_list.append(j)
+            # user-defined function to judge the intersection of two polygons
+            elif limited_delaunay_neighbor(Voronoi_cell[i].tolist(), positions[i], positions[j]):
+                first_layer_neighbor_list.append(j)
+                # Voronoi-like neighbor particles
+        first_layer_neighbor_set[i] = first_layer_neighbor_list
+
+    return first_layer_neighbor_set
+
+
+def first_layer_neighbor_without_graph_old(positions):
     """
     According to the current positions, the first layer neighbor set of
     particles is obtained.
@@ -607,17 +729,18 @@ def first_layer_neighbor_without_graph(positions):
         neighbor_set_list = []
         starting_ending_point_list = []
         starting_ending_angle_list = []
-        k = 0  # recording the number of neighbor particles
+        # k = 0  # recording the number of neighbor particles
         for j in xrange(N):
             if j != i:
                 # distance between i and j
                 d = math.sqrt(
                     (positions[i][0] - positions[j][0]) ** 2 + (positions[i][1] - positions[j][1]) ** 2)
                 if d <= SENSING_RANGE:  # particles i's neighbors
-                    k += 1
+                    # k += 1
                     # pos_x = [positions[i][0], positions[j][0]]
                     # pos_y = [positions[i][1], positions[j][1]]
-                    # plt.plot(pos_x, pos_y, '--b', alpha=0.2)# plotting the links between neighbor particles
+                    # plt.plot(pos_x, pos_y, '--b', alpha=0.2)# plotting the
+                    # links between neighbor particles
                     neighbor_set_list.append(j)
                     # recording all the intersection points of particle i and its nearest neighbors
                     # circle_intersection_point_list.append(cip_a) # the first point of circle i and circle j
@@ -738,14 +861,15 @@ def first_layer_neighbor_without_graph(positions):
                 # plt.plot(pos_x, pos_y, '--b', alpha=0.2) # plotting the links between
                 # Voronoi-like neighbor particles
         first_layer_neighbor_set[i] = first_layer_neighbor_list
-    # setting the region for displaying graph
-    # x_max = max(positions[:,0])
-    # x_min = min(positions[:,0])
-    # y_max = max(positions[:,1])
-    # y_min = min(positions[:,1])
-    # plt.xlim(x_min-1.1*SENSING_RANGE,x_max+1.1*SENSING_RANGE)
-    # plt.ylim(y_min-1.1*SENSING_RANGE,y_max+1.1*SENSING_RANGE)
-    # plt.savefig(str(N) +'_particles_sensing_range at ' +str(steps)+' steps.png')
+
+# setting the region for displaying graph
+# x_max = max(positions[:,0])
+# x_min = min(positions[:,0])
+# y_max = max(positions[:,1])
+# y_min = min(positions[:,1])
+# plt.xlim(x_min-1.1*SENSING_RANGE,x_max+1.1*SENSING_RANGE)
+# plt.ylim(y_min-1.1*SENSING_RANGE,y_max+1.1*SENSING_RANGE)
+# plt.savefig(str(N) +'_particles_sensing_range at ' +str(steps)+' steps.png')
 
     return first_layer_neighbor_set
 
@@ -906,9 +1030,6 @@ print 'saving velocity tolerance'
 #    velocities
 
 order_para = []  # defining variable for calculating order parameter
-fln_num = [0] * N  # the number of first layer neighbor of a particle
-# config_list = np.zeros((NSTEPS,N)) # recording the absolute velocities
-# of all particles
 # recording the absolute velocities of all particles for calculating the
 # order parameter
 v_list = np.zeros((NSTEPS, N))
@@ -917,10 +1038,11 @@ theta_list = np.zeros((NSTEPS, N))
 for steps in xrange(NSTEPS):
     # obtaining the first layer neighbor set for all particles according to
     # their current positions
-    # first_layer_neighbor_set = first_layer_neighbor_with_graph(positions)
-    # saving figure of sensing range at each time step
-    first_layer_neighbor_set = first_layer_neighbor_without_graph(
+    first_layer_neighbor_set = first_layer_neighbor_without_graph_old(
         positions)  # without saving figure of sensing range
+# first_layer_neighbor_set =
+# first_layer_neighbor_without_graph_new(positions)  # without saving
+# figure of sensing range
     tmp_v = [0.0] * N
     tmp_theta = [0.0] * N
     # for using the '+' operation directly
@@ -957,22 +1079,17 @@ for steps in xrange(NSTEPS):
             alig_force[
                 i] += [u_b * v[j] * math.cos(theta[j]), u_b * v[j] * math.sin(theta[j])]
             if d < equ_point:
-                # normalized repulsive force
-                # rep_force[i] += [u_a * (d - rep_margin) ** 2 / (rep_margin - 2 * CORE_RANGE) ** 2 * (positions[i][0] - positions[j][0]) / d,
-                #                  u_a * (d - rep_margin) ** 2 / (rep_margin - 2 * CORE_RANGE) ** 2 * (positions[i][1] - positions[j][1]) / d]
                 # linear force with equilibrium point
-                rep_force += [u_a*(equ_point-d)/(equ_point-2*CORE_RANGE)*(positions[i][0]-positions[j][0])/d,
-                              u_a*(equ_point-d)/(equ_point-2*CORE_RANGE)*(positions[i][1]-positions[j][1])/d]
+                rep_force += [u_a * (equ_point - d) / (equ_point - 2 * CORE_RANGE) * (positions[i][0] - positions[j][0]) / d,
+                              u_a * (equ_point - d) / (equ_point - 2 * CORE_RANGE) * (positions[i][1] - positions[j][1]) / d]
             if d > equ_point:
-                # normalized attractive force
-                # att_force[i] += [-u_a * (d - att_margin) ** 2 / (SENSING_RANGE - att_margin) ** 2 * (positions[i][0] - positions[j][0]) / d,
-                #                  -u_a * (d - att_margin) ** 2 / (SENSING_RANGE - att_margin) ** 2 * (positions[i][1] - positions[j][1]) / d]
                 # linear force with equilibrium point
-                att_force[i] += [-u_a*(d-equ_point)/(SENSING_RANGE-equ_point)*(positions[i][0]-positions[j][0])/d,
-                                 -u_a*(d-equ_point)/(SENSING_RANGE-equ_point)*(positions[i][1]-positions[j][1])/d]
+                att_force[i] += [-u_a * (d - equ_point) / (SENSING_RANGE - equ_point) * (positions[i][0] - positions[j][0]) / d,
+                                 -u_a * (d - equ_point) / (SENSING_RANGE - equ_point) * (positions[i][1] - positions[j][1]) / d]
         # alignment force with particle i itself
-        # if the coefficient alpha is zero, the particle will move with its current direction
+        # two ways of adding magnitude parameters
         alig_force[i] += [v[i] * math.cos(theta[i]), v[i] * math.sin(theta[i])]
+        # are equal.
         resultant_force[i] = alig_force[i] + rep_force[i] + att_force[i]
         tmp_theta[i] = math.atan2(
             resultant_force[i][1], resultant_force[i][0])  # theta = atan2(y,x)
@@ -1043,7 +1160,6 @@ for steps in xrange(NSTEPS):
     # 3. histogram of order parameter
     # 4. first layer neighbors graph
 
-
     if (total_steps + 1) % SAVE_INTERVAL == 0:
         # defining file names for intermediate results with Pickle
         filename_config_si_pk = 'config of ' + \
@@ -1053,8 +1169,7 @@ for steps in xrange(NSTEPS):
         filename_v_si_pk = 'v of ' + \
             str(N) + ' particles at ' + str(total_steps) + ' steps.pk'
         filename_ord_para_si_pk = 'order param of ' + \
-            str(N) + ' particles at ' + str(total_steps) + ' steps.pk'        
-        
+            str(N) + ' particles at ' + str(total_steps) + ' steps.pk'
         # saving intermediate results with Pickle
         cPickle.dump(
             positions, open(saving_path + filename_config_si_pk, 'wb'))
@@ -1112,7 +1227,8 @@ for steps in xrange(NSTEPS):
             for op in order_para:
                 f_op_si.write(str(op) + '\n')
             f_op_si.close()
-            # print 'saving intermediate order parameter at ' + str(total_steps) + 'steps'
+            # print 'saving intermediate order parameter at ' +
+            # str(total_steps) + 'steps'
             print 'saving intermediate states at ' + str(total_steps) + ' steps'
 
         t = xrange(total_steps + 1)
@@ -1154,9 +1270,6 @@ for steps in xrange(NSTEPS):
             # plotting particles in the plane = Arrow(0, 0, 5*np.sin(z),
             # 5*np.cos(z))
             plt.plot(x, y, 'ok', markersize=2)
-            # arrow(x, y, 2*dx, 2*dy, fc='red', alpha=0.75, length_includes_head=True, width=0.005, head_width=0.02, \
-            # head_length=0.01)# arrows represent the velocity vectors(properly
-            # scaled)
             arrows = FancyArrowPatch(posA=(x, y), posB=(x + 35 * dx, y + 35 * dy),
                                      color = 'r',
                                      arrowstyle='-|>',
@@ -1320,7 +1433,8 @@ for steps in xrange(NSTEPS):
             # particles i
             Voronoi_cell[i] = tmp_poly
 
-        # according to the info of approximated Voronoi cells, plotting the accurate Voronoi cells
+        # according to the info of approximated Voronoi cells, plotting the
+        # accurate Voronoi cells
         for i in xrange(N):
             # setting the color for filling the vn region of particle
             fcolor = np.random.rand(3, 1)
@@ -1422,21 +1536,6 @@ cPickle.dump(positions, open(saving_path + filename_config_pk, 'wb'))
 cPickle.dump(theta, open(saving_path + filename_theta_pk, 'wb'))
 cPickle.dump(v, open(saving_path + filename_v_pk, 'wb'))
 
-# f_config = open(saving_path + filename_config, 'w') # writing positions
-# for a in positions:
-#   f_config.write(str(a[0]) + ' ' + str(a[1]) + '\n')
-# f_config.close()
-#
-# f_theta = open(saving_path + filename_theta, 'w') # writing theta
-# for b in theta:
-#   f_theta.write(str(b) + '\n')
-# f_theta.close()
-#
-# f_v = open(saving_path + filename_v, 'w') # writing v
-# for c in v:
-#   f_v.write(str(c) + '\n')
-# f_v.close()
-#
 # writing order parameter with additional mode
 f_op = open(saving_path + filename_ord_para, 'a')
 for op in order_para:
